@@ -3,8 +3,9 @@ const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 ctx.drawLine = (x1, y1, x2, y2) => {
     ctx.beginPath();
+    ctx.beginPath();
     ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
+    ctx.bezierCurveTo(x1, y2, x2, y2, x2, y2);
     ctx.stroke();
     ctx.closePath();
 };
@@ -85,7 +86,7 @@ class V2 {
      * @returns {V2}
      */
     direction_reversed(degrees) {
-        return new V2(-Math.sin(((degrees - 90) * Math.PI / 180) - (Math.PI / 2)), -Math.cos(((degrees - 90) * Math.PI / 180) - (Math.PI / 2)));
+        return this.direction(degrees).multiply(-1, -1);
     }
 
     /**
@@ -112,7 +113,7 @@ class V2 {
      * @param {number} radius
      */
     collides_circles(currentRadius, v2, radius) {
-        return (this.add(currentRadius, currentRadius)).distance(v2.add(radius, radius)) < (radius + currentRadius);
+        return (this.add(currentRadius / 2, currentRadius / 2)).distance(v2.add(radius / 2, radius / 2)) < ((radius + currentRadius) / 2);
     }
 
     motion_to(v2) {
@@ -154,6 +155,7 @@ class Entity extends V2 {
     update() {
         this.ticks++;
         this.model.callable(this, this.width, this.height);
+        this.connected.forEach(entity => ctx.drawLine(this.x, this.y, entity.x, entity.y));
     }
 }
 
@@ -171,16 +173,18 @@ class Living extends Entity {
     }
 
     update() {
-        this.connected.forEach(entity => ctx.drawLine(this.x, this.y, entity.x, entity.y));
         const ent = this.connected
-            .filter(i => i.distance(this) > 15)
-            .sort((a, b) => b.distance(this) - a.distance(this))[0] ||
-            Object.values(entities)
-                .find(entity => entity.alive && entity !== this && entity.collides_circles(this.width, entity, entity.width));
+                .filter(i => i.distance(this) > 15)
+                .sort((a, b) => b.distance(this) - a.distance(this))[0];
+        /**
+         ||
+         Object.values(entities)
+         .find(entity => entity.alive && entity !== this && this.collides_circles(this.width, entity, entity.width));
+         */
         if (ent) {
-            this.set_position(this.add(this.motion_reversed_to(ent).x, this.motion_reversed_to(ent).y));
+            this.set_position(this.add((this.add(this.width / 2, this.width / 2)).motion_to(ent.add(ent.width / 2, ent.width / 2)).x, this.motion_reversed_to(ent).y));
             this.fall_momentum = 0;
-        } this.y += 0.5 + (this.fall_momentum += 0.01);
+        } else this.y += 0.5 + (this.fall_momentum += 0.01);
         super.update();
     }
 }
