@@ -13,64 +13,87 @@ let __uuid = 0;
 /*** @type {Object<number, Entity>} */
 const entities = {};
 
-class Model {
-    /*** @param {function(v2: V2, width: number, height: number): void} callable */
-    constructor(callable) {
-        this.callable = callable;
-    }
-}
-
-const MODEL_GENERATOR = {
-    square: color => new Model((v2, width, height) => {
-        ctx.fillStyle = color || "#000000";
-        ctx.fillRect(v2.x, v2.y, width, height);
-    }),
-    circle: color => new Model((v2, width) => {
-        ctx.fillStyle = color || "#000000";
-        const circle = new Path2D();
-        circle.arc(v2.x, v2.y, width / 2, 0, Math.PI * 2);
-        ctx.fill(circle);
-    })
-};
-
 class V2 {
     constructor(x = 0, y = 0) {
         this.x = x;
         this.y = y;
     }
 
+    /**
+     * @param {number | V2} x
+     * @param {number} y
+     * @returns {V2}
+     */
     add(x, y) {
+        if (x instanceof V2) {
+            y = x.y;
+            x = x.x;
+        }
         return new V2(this.x + x, this.y + y);
     }
 
+    /**
+     * @param {number | V2} x
+     * @param {number} y
+     * @returns {V2}
+     */
     subtract(x, y) {
+        if (x instanceof V2) {
+            y = x.y;
+            x = x.x;
+        }
         return new V2(this.x - x, this.y - y);
     }
 
+    /**
+     * @param {number | V2} x
+     * @param {number} y
+     * @returns {V2}
+     */
     multiply(x, y) {
+        if (x instanceof V2) {
+            y = x.y;
+            x = x.x;
+        }
         return new V2(this.x * x, this.y * y);
     }
 
+    /**
+     * @param {number | V2} x
+     * @param {number} y
+     * @returns {V2}
+     */
     divide(x, y) {
+        if (x instanceof V2) {
+            y = x.y;
+            x = x.x;
+        }
         return new V2(this.x / x, this.y / y);
     }
 
+    /*** @returns {V2} */
     floor() {
         return new V2(Math.floor(this.x), Math.floor(this.y));
     }
 
+    /*** @returns {V2} */
     round() {
         return new V2(Math.round(this.x), Math.round(this.y));
     }
 
+    /*** @returns {V2} */
     abs() {
         return new V2(Math.abs(this.x), Math.abs(this.y));
     }
 
-    /*** @param {V2} v2 */
+    /**
+     * @param {V2} v2
+     * @returns {V2}
+     */
     set_position(v2) {
         this.x = v2.x;
         this.y = v2.y;
+        return this;
     }
 
     /**
@@ -94,7 +117,7 @@ class V2 {
      * @returns {V2}
      */
     direction(degrees) {
-        return new V2(-Math.cos(((degrees - 90) * Math.PI / 180) - (Math.PI / 2)), -Math.sin(((degrees - 90) * Math.PI / 180) - (Math.PI / 2)));
+        return new V2(-Math.sin(((degrees - 90) * Math.PI / 180) - (Math.PI / 2)), -Math.cos(((degrees - 90) * Math.PI / 180) - (Math.PI / 2)));
     }
 
     /**
@@ -105,15 +128,6 @@ class V2 {
         let res = Math.atan2(v2.x - this.x, v2.y - this.y) / Math.PI * 180;
         if (res < 0) res += 360;
         return res;
-    }
-
-    /**
-     * @param {number} currentRadius
-     * @param {V2} v2
-     * @param {number} radius
-     */
-    collides_circles(currentRadius, v2, radius) {
-        return (this.add(currentRadius / 2, currentRadius / 2)).distance(v2.add(radius / 2, radius / 2)) < ((radius + currentRadius) / 2);
     }
 
     motion_to(v2) {
@@ -129,21 +143,28 @@ class Entity extends V2 {
     /**
      * @param {number} x
      * @param {number} y
-     * @param {Model} model
-     * @param {number} width
-     * @param {number} height
+     * @param {string} color
+     * @param {number} radius
      */
-    constructor(x, y, model = MODEL_GENERATOR.circle("#000000"), width = 10, height = 10) {
+    constructor(x, y, color = "#000000", radius = 10) {
         super(x, y);
-        this.model = model;
-        this.width = width;
-        this.height = height;
+        this.color = color;
+        this.radius = radius;
         this.alive = true;
         this.uuid = __uuid++;
         this.ticks = 0;
         entities[this.uuid] = this;
         /*** @type {Entity[]} */
         this.connected = [];
+        this.fall_momentum = 0;
+    }
+
+    /**
+     * @param {Entity} entity
+     * @returns {boolean}
+     */
+    collides(entity) {
+        return this.getMiddle().distance(entity.getMiddle()) < ((entity.radius + this.radius) / 2);
     }
 
     /*** @param {Entity} entity */
@@ -152,37 +173,50 @@ class Entity extends V2 {
         entity.connected.push(this);
     }
 
+    /*** @returns {Entity[]} */
+    getCollisions() {
+        return Object.values(entities)
+            .filter(entity => entity.alive && entity !== this && this.collides(entity));
+    }
+
+    /*** @returns {V2} */
+    getMiddle() {
+        return this.add(this.radius / 2, this.radius / 2);
+    }
+
     update() {
         this.ticks++;
-        this.model.callable(this, this.width, this.height);
+        const collision = this.getCollisions()[0];
+        if(collision) {
+            const motion = this.getMiddle().motion_reversed_to(collision.getMiddle()).multiply(2, 2);
+            this.set_position(this.add(motion.x, motion.y));
+            this.fall_momentum = 0;
+        }
+        ctx.fillStyle = this.color || "#000000";
+        const circle = new Path2D();
+        circle.arc(this.x, this.y, this.radius / 2, 0, Math.PI * 2);
+        ctx.fill(circle);
         this.connected.forEach(entity => ctx.drawLine(this.x, this.y, entity.x, entity.y));
     }
 }
 
 class Living extends Entity {
-    /**
-     * @param {number} x
-     * @param {number} y
-     * @param {Model} model
-     * @param {number} width
-     * @param {number} height
-     */
-    constructor(x, y, model = MODEL_GENERATOR.circle("#000000"), width = 10, height = 10) {
-        super(x, y, model, width, height);
-        this.fall_momentum = 0;
-    }
-
     update() {
-        const ent = this.connected
-                .filter(i => i.distance(this) > 15)
-                .sort((a, b) => b.distance(this) - a.distance(this))[0];
-        /**
-         ||
-         Object.values(entities)
-         .find(entity => entity.alive && entity !== this && this.collides_circles(this.width, entity, entity.width));
-         */
-        if (ent) {
-            this.set_position(this.add((this.add(this.width / 2, this.width / 2)).motion_to(ent.add(ent.width / 2, ent.width / 2)).x, this.motion_reversed_to(ent).y));
+        const stringAlert = this.connected
+            .filter(i => i.distance(this) > 30)
+            .sort((a, b) => b.distance(this) - a.distance(this))[0];
+        const stringDistance = this.connected
+            .filter(i => i.distance(this) > 15)
+            .sort((a, b) => b.distance(this) - a.distance(this))[0];
+        if (this.getCollisions()[0]) {
+        } else /*if (stringAlert) {
+            const motion = this.getMiddle().motion_to(stringAlert).multiply(this.distance(stringAlert.getMiddle()) - 15, this.distance(stringAlert.getMiddle()) - 15);
+            this.set_position(this.add(motion.x, motion.y));
+            this.fall_momentum = 0;
+        } else */if (stringDistance) {
+            console.log(this.getMiddle(), stringDistance.getMiddle(), this.getMiddle().motion_to(stringDistance.getMiddle()))
+            const motion = this.getMiddle().motion_to(stringDistance.getMiddle());
+            this.set_position(this.add(motion.x, motion.y));
             this.fall_momentum = 0;
         } else this.y += 0.5 + (this.fall_momentum += 0.01);
         super.update();
@@ -198,10 +232,31 @@ function render() {
 
 render();
 
-let last = new Entity(100, 100);
+for (let x = 10; x < canvas.width; x += 10) {
+    new Entity(x, 500)
+    new Entity(x - 5, 505)
+}
+
+const a = new Entity(100, 100);
+
+/*let last = new Entity(100, 100);
+let a = new Living(110, 100);
+let b = new Entity(120, 100);
+last.connect(a);
+b.connect(a);*/
+
+/*let last = new Entity(100, 100);
 for (let x = 111; x < 500; x += 11) {
     let now = new Living(x, 100);
     now.connect(last);
     last = now;
 }
-new Entity(507, 100).connect(last);
+new Entity(507, 100).connect(last);*/
+
+addEventListener("mousemove", ev => {
+    const motion = a.motion_to(new V2(ev.clientX, ev.clientY))
+    a.set_position(a.add(motion.x, motion.y))
+})
+addEventListener("click", ev => {
+    a.set_position(new V2(ev.clientX, ev.clientY))
+})
